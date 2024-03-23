@@ -21,39 +21,41 @@ public class App
     public static void main( String[] args )
     {
        
-    	// Parameters
+    	// Algorithm parameters
     	int K=5; 	// Number of clusters to discover
     	int MAX_ITERATIONS=100; // Stopping condition
-    	int DIM=0; // 
+    	int DIM=0; // Dimension of the points in the dataset
+    	int DATASET_SIZE=0; // Number of points in the dataset
     	
+    	// External file info
     	String csvFile = "clustering_dataset.csv";
         String csvSplitBy = ",";
         
         
-        // Data structures - initialization
-
-        // Dataset points
-        //List<Float> X = new ArrayList<Float>();
-        //List<Float> Y = new ArrayList<Float>();
-       
+        // Dataset points a list of points in n-dimensions.
         List<List<Float>> points= new ArrayList<List<Float>>();
        
         // Cluster informations
         List<List<Float>> centroids =  new ArrayList<List<Float>>();
+        List<List<Float>> sums =  new ArrayList<List<Float>>();
+        List<Integer> counts= new ArrayList<Integer>();
+        
+        
+        //Results: membership of each point in the cluster
         List<Integer> membership =  new ArrayList<Integer>();
         
         
+        //Temp. variables
         List<Float> dists= new ArrayList<Float>(); 
-       	
-        List<List<Float>> sums =  new ArrayList<List<Float>>();
-        List<Integer> counts= new ArrayList<Integer>();
-       	 	 
+       
+ 
         System.out.println("Loading the dataset...");
         
         String line="";
    	 	try (BufferedReader br = new BufferedReader(new FileReader(csvFile))) {
    	 	String[] ris = line.split(br.readLine()); // Skip the first header line
-   	 	DIM=ris.length+1;
+   	 
+   	 	DIM=ris.length+1; // Initialization of the dimension of points.
             while ((line = br.readLine()) != null) {
                 
             	// Splitting the line by commas
@@ -69,10 +71,13 @@ public class App
                 points.add(point);
                 membership.add(0);
             }
+            DATASET_SIZE=points.size();
         } catch (IOException e) {
             e.printStackTrace();
         }
-   	 // Initialization of centroids	
+   	 	
+   	 	
+   	 // Initialization of the centroids	and related informations.
    	for (int j=0;j<K;j++) {
    		List<Float> centr= new ArrayList<Float>();
    		List<Float> partialSum=new ArrayList<Float>();
@@ -80,19 +85,21 @@ public class App
    		for(int k=0;k<DIM;k++) {
 	     	centr.add(0.0f);
 	     	partialSum.add(0.0f);
-	   	 }
+	   	}
 	   	centroids.add(centr);
 	   	sums.add(partialSum);
 	   	dists.add(0.0f);
 	   	counts.add(0);
    	}
    	 		
-      
-   	 int DATASET_SIZE=points.size();
-   	 
    	 System.out.println("Dataset loaded");
         
    	 // Centroids initialization
+   	 
+   	 
+   	 // Start of the algorithm
+    	
+   	 long inizio=System.currentTimeMillis();
    	 
    	 // Select random centroids
    	 Random random = new Random(0);
@@ -107,31 +114,14 @@ public class App
    		while (randomChosen.contains(randomNumber));
    		randomChosen.add(randomNumber);
    	
-   		
    		for (int k=0;k<centroids.get(i).size();k++) {
    			centroids.get(i).set(k, points.get(randomNumber).get(k));
 		}
-   	
    	 }
    	 
-   	System.out.println("Starting centroids: ");
-   	int a=1;
-   	for (Iterator<List<Float>> iterator = centroids.iterator(); iterator.hasNext();) {
-   		List<Float>  centroid = (List<Float>) iterator.next();
-   		System.out.print("Centr nr. "+a+" :");
-   		for (int k=0;k<centroid.size();k++) {
-			System.out.print(centroid.get(k));
-			if (k!=centroid.size()-1) {
-				System.out.print(",");
-			}
-		}
-   		System.out.print("\n");
-   		a++;
-   	}
+   	 printCentroids(centroids);
    	 
-   	 // Start of the algorithm
-   	
-   	 long inizio=System.currentTimeMillis();
+   	 
    	 for (int nrIteration=0;nrIteration<MAX_ITERATIONS;nrIteration++) {
    		 
 	   	 for(int indicePunto=0; indicePunto<DATASET_SIZE;indicePunto++) {
@@ -177,9 +167,7 @@ public class App
 	   	 }
 	   	 
 	   	 
-	   	 // reset distance and sum
-	   	 
-	   	 
+	   	// reset distance and sum
 	 	for (int j=0;j<K;j++) {
 	   		for(int k=0;k<DIM;k++) {
 	   			sums.get(j).set(k,0.0f);
@@ -191,27 +179,34 @@ public class App
    	 long fine=System.currentTimeMillis();
    	 
   
-   	 System.out.println("Last centroids: ");
+   	System.out.println("Last centroids: ");
    	 
- 	a=1;
-   	for (Iterator<List<Float>> iterator = centroids.iterator(); iterator.hasNext();) {
-   		List<Float>  centroid = (List<Float>) iterator.next();
-   		System.out.print("Centr nr. "+a+" :");
-   		for (int k=0;k<centroid.size();k++) {
-			System.out.print(centroid.get(k));
-			if (k!=centroid.size()-1) {
-				System.out.print(",");
-			}
-		}
-   		System.out.print("\n");
-   		a++;
-   	}
+ 	printCentroids(centroids);
    	
   	System.out.println("Tempo totale:"+(fine-inizio));
    	   
     }
     
-    
+    public static void printCentroids(List<List<Float>> centroids) {
+    	
+    	System.out.println("Starting centroids: ");
+       	int a=1;
+       	for (Iterator<List<Float>> iterator = centroids.iterator(); iterator.hasNext();) {
+       		List<Float>  centroid = (List<Float>) iterator.next();
+       		System.out.print("Centr nr. "+a+" :");
+       		for (int k=0;k<centroid.size();k++) {
+    			System.out.print(centroid.get(k));
+    			if (k!=centroid.size()-1) {
+    				System.out.print(",");
+    			}
+    		}
+       		System.out.print("\n");
+       		a++;
+       	}
+    	
+    	
+    	
+    }
     
    
     
