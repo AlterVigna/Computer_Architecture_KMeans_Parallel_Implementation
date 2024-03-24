@@ -34,7 +34,6 @@ public class ParallelKMeans {
         // Membership of each point in the cluster
         List<Integer> membership = new ArrayList<Integer>();
 
-
     	System.out.println("Loading the dataset...");
         
         loadData(csvFile,csvSplitBy,DIM,points,membership);
@@ -204,23 +203,6 @@ public class ParallelKMeans {
 		}
     }
     
-    
-    
-    /**
-     * Utility method to print the centroids coordinates.
-     */
-    public static void printCentroids(List<List<Float>> centroids) {
-        for (int i = 0; i < centroids.size(); i++) {
-            System.out.print("Centroid " + i + ": ");
-            for (Float val : centroids.get(i)) {
-                System.out.print(val + " ");
-            }
-            System.out.println();
-        }
-    }
-    
-    
-    
     private static class AssignPointsToClusters implements Callable<ThreadReturns> {
     	
     	int indexStart;
@@ -233,11 +215,11 @@ public class ParallelKMeans {
     	List<Integer> membership = new ArrayList<Integer>();
     	
     	
-    	public AssignPointsToClusters(int inizio, int fine,int K, int DIM,
+    	public AssignPointsToClusters(int start, int end,int K, int DIM,
     			List<List<Float>> points,List<List<Float>> centroids,List<Integer> membership) {
     		
-    		this.indexStart=inizio;
-    		this.indexEnd=fine;
+    		this.indexStart=start;
+    		this.indexEnd=end;
     		this.K=K;
     		this.DIM=DIM;
     		
@@ -300,6 +282,21 @@ public class ParallelKMeans {
     }
     
     
+    
+    /**
+     * Utility method to print the centroids coordinates.
+     */
+    public static void printCentroids(List<List<Float>> centroids) {
+        for (int i = 0; i < centroids.size(); i++) {
+            System.out.print("Centroid " + i + ": ");
+            for (Float val : centroids.get(i)) {
+                System.out.print(val + " ");
+            }
+            System.out.println();
+        }
+    }
+    
+    
     public static int getNumberOfDimensions(String csvFile,String csvSplitBy) {
     	
         try (BufferedReader br = new BufferedReader(new FileReader(csvFile))) {
@@ -313,8 +310,5 @@ public class ParallelKMeans {
         }
         return 0;
     }
-    
-    
-    
     
 }
