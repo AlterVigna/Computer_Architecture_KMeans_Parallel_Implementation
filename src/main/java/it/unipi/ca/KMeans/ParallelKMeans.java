@@ -7,37 +7,43 @@ import java.util.*;
 
 public class ParallelKMeans {
 
-	// External file info
-    static String csvFile = "clustering_dataset_10000000.csv";
-    static String csvSplitBy = ",";
 	
-
-    // Algorithm parameters
-    static int K = 5; // Number of clusters to discover
-    static int MAX_ITERATIONS = 1; // Stopping condition
-    static int DIM = 0; // Dimension of the points in the dataset
-    static int DATASET_SIZE = 0; // Number of points in the dataset
-
-    static int NR_THREAD=12;
-    // Dataset points a list of points in n-dimensions.
-    static List<List<Float>> points = new ArrayList<List<Float>>();
-
-    // Result to be achieved: about Cluster informations and composition
-   
-    // Centroid points
-    static List<List<Float>> centroids = new ArrayList<List<Float>>();
-    // Membership of each point in the cluster
-    static List<Integer> membership = new ArrayList<Integer>();
-
-    
     public static void main(String[] args) throws InterruptedException, ExecutionException {
-        System.out.println("Loading the dataset...");
         
-        loadData();
+    	
+    	// External file info
+        String csvFile = "clustering_dataset_10000000.csv";
+        String csvSplitBy = ",";
+    	
+
+        int NR_THREAD=10;	// Number of threads to use
+        
+        // Algorithm parameters
+        int K = 5; // Number of clusters to discover
+        int MAX_ITERATIONS = 5; // Stopping condition
+        
+        int DIM = getNumberOfDimensions(csvFile, csvSplitBy);  // Dimension of the points in the dataset
+        
+        // Dataset points a list of points in n-dimensions.
+        List<List<Float>> points = new ArrayList<List<Float>>();
+
+        // Result to be achieved: about Cluster informations and composition
+       
+        // Centroid points
+        List<List<Float>> centroids = new ArrayList<List<Float>>();
+        // Membership of each point in the cluster
+        List<Integer> membership = new ArrayList<Integer>();
+
+
+    	System.out.println("Loading the dataset...");
+        
+        loadData(csvFile,csvSplitBy,DIM,points,membership);
+        
+        int DATASET_SIZE=points.size();
 
         System.out.println("Dataset loaded");
 
-        initializeCentroids();
+        initializeCentroids(K, points, centroids);
        
         System.out.println("Starting centroids: ");
         printCentroids(centroids);
@@ -58,26 +64,18 @@ public class ParallelKMeans {
     		splits.add(currentDatasetIndex);
     	}
     	
-    	
-    	
-    	
-
-        
-        ExecutorService executor = Executors.newFixedThreadPool(NR_THREAD);
-        List<Future<ThreadReturns>> returnList=new ArrayList<Future<ThreadReturns>>();
-        
-        
         for (int iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
         	
-        	returnList.clear();
+        	ExecutorService executor = Executors.newFixedThreadPool(NR_THREAD);
+            List<Future<ThreadReturns>> returnList=new ArrayList<Future<ThreadReturns>>();
+        	
         	currentDatasetIndex=0;
         	
         	for (Iterator<Integer> iterator = splits.iterator(); iterator.hasNext();) {
         		final int startSplit=currentDatasetIndex;
         		Integer endSplit = (Integer) iterator.next();
         		
-        		//Future<ThreadReturns> feature = executor.submit(() -> assignPointsToCluster(startSplit,endSplit));
-        		Future<ThreadReturns> feature = executor.submit(new MyInfoCallable(startSplit, endSplit, K, DIM, points, centroids, membership));
+        		Future<ThreadReturns> feature = executor.submit(new AssignPointsToClusters(startSplit, endSplit, K, DIM, points, centroids, membership));
         				
         		returnList.add(feature);
         		currentDatasetIndex=endSplit;
@@ -90,7 +88,7 @@ public class ParallelKMeans {
               e.printStackTrace();
           }
         
-          updateCentroids(returnList);
+          updateCentroids(K,DIM, returnList,centroids);
         }
 
         long end = System.currentTimeMillis();
@@ -105,29 +103,25 @@ public class ParallelKMeans {
     /**
      * Method for loading the dataset into a proper data structure and initialization of default membership.
      */
-    public static void loadData() {
+    public static void loadData(String csvFile,String csvSplitBy,int N_DIM,List<List<Float>> points,List<Integer> membership) {
         try (BufferedReader br = new BufferedReader(new FileReader(csvFile))) {
-            String line;
-            line = br.readLine(); // Skip the first header line
-            String[] ris = line.split(csvSplitBy);
-            DIM = ris.length; // Initialization of the dimension of points.
+            String line= br.readLine(); // Skip the first header line
             while ((line = br.readLine()) != null) {
                 String[] data = line.split(csvSplitBy);
                 List<Float> point = new ArrayList<Float>();
-                for (int dim = 0; dim < DIM; dim++) {
+                for (int dim = 0; dim < N_DIM; dim++) {
                     point.add(Float.parseFloat(data[dim]));
                 }
                 points.add(point);
                 membership.add(0);
             }
-            DATASET_SIZE = points.size();
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
     
-    public static void initializeCentroids() {
+    public static void initializeCentroids(int K,List<List<Float>> points,List<List<Float>> centroids) {
         Random random = new Random(0);
         Set<Integer> randomChosen = new HashSet<Integer>();
         for (int i = 0; i < K; i++) {
@@ -141,54 +135,6 @@ public class ParallelKMeans {
     }
 
     
-    
-   public static ThreadReturns assignPointsToCluster(int inizio, int fine) {
-    	
-    	// Temp. variables
-        List<Float> dists = new ArrayList<Float>();
-        ThreadReturns results= new ThreadReturns(K);
-        
-        for (int j=0;j<K;j++) {
-        	dists.add(0.0f);
-        }
-    	
-    	for (int i = inizio; i < fine; i++) {
-			
-    		List<Float> point = points.get(i);
-    		
-    		for (int j=0;j<K;j++) {
-    	        	dists.set(j, 0.0f);
-    	    }
-    		
-            for (int clusterIndex = 0; clusterIndex < K; clusterIndex++) {
-                float sumPartial = 0.0f;
-                for (int dim = 0; dim < DIM; dim++) {
-                    sumPartial += Math.pow(centroids.get(clusterIndex).get(dim) - point.get(dim), 2);
-                }
-                dists.set(clusterIndex, (float) Math.sqrt(sumPartial));
-            }
-    		
-            float min = dists.get(0);
-            int minIndex = 0;
-            for (int j = 1; j < dists.size(); j++) {
-                float currentValue = dists.get(j);
-                if (currentValue < min) {
-                    min = currentValue;
-                    minIndex = j;
-                }
-            }
-    		
-            membership.set(i, minIndex);
-    		
-            for (int dim = 0; dim < DIM; dim++) {
-            	results.getSums().get(minIndex).set(dim, results.getSums().get(minIndex).get(dim) + point.get(dim));
-            }
-            results.getCounts().set(minIndex, results.getCounts().get(minIndex) + 1); 
-		}
-		return results;
-    }
-
-   
     /**
      * Methods to aggregate and compute the new centroids coordinates.
      * 
@@ -196,7 +142,7 @@ public class ParallelKMeans {
      * @throws InterruptedException
      * @throws ExecutionException
      */
-    public static void updateCentroids(List<Future<ThreadReturns>> returnList) throws InterruptedException, ExecutionException {
+    public static void updateCentroids(int K,int DIM,List<Future<ThreadReturns>> returnList,List<List<Float>> centroids) throws InterruptedException, ExecutionException {
         
         List<List<Float>> sums = new ArrayList<List<Float>>();
         List<Integer> counts = new ArrayList<Integer>();
@@ -208,7 +154,7 @@ public class ParallelKMeans {
          	}
          	sums.add(sum);
          	counts.add(0);
-         }
+        }
     	// Reduce operation: take all the sums and counts from all the threads.
     	for (Iterator<Future<ThreadReturns>> iterator = returnList.iterator(); iterator.hasNext();) {
 			Future<ThreadReturns> future = (Future<ThreadReturns>) iterator.next();
@@ -216,10 +162,9 @@ public class ParallelKMeans {
 			
 			for (int clusterIndex = 0; clusterIndex < K; clusterIndex++) {
 	            for (int dim = 0; dim < DIM; dim++) {
-	            	
 	            	sums.get(clusterIndex).set(dim, ris.getSums().get(clusterIndex).get(dim)+sums.get(clusterIndex).get(dim));
-	            	counts.set(clusterIndex,ris.getCounts().get(clusterIndex)+counts.get(clusterIndex));
 	            }
+	            counts.set(clusterIndex,ris.getCounts().get(clusterIndex)+counts.get(clusterIndex));
 	        }
 		}
     	
@@ -239,7 +184,7 @@ public class ParallelKMeans {
     	private List<List<Float>> sums = new ArrayList<List<Float>>();
         private List<Integer> counts = new ArrayList<Integer>();
         
-        public ThreadReturns(int K) {
+        public ThreadReturns(int K,int DIM) {
         	
         	 for (int j=0;j<K;j++) {
              	List<Float> sum= new ArrayList<Float>();
@@ -276,10 +221,10 @@ public class ParallelKMeans {
     
     
     
-    private static class MyInfoCallable implements Callable<ThreadReturns> {
+    private static class AssignPointsToClusters implements Callable<ThreadReturns> {
     	
-    	int inizio;
-    	int fine;
+    	int indexStart;
+    	int indexEnd;
     	int K;
     	int DIM;
     	
@@ -288,11 +233,11 @@ public class ParallelKMeans {
     	List<Integer> membership = new ArrayList<Integer>();
     	
     	
-    	public MyInfoCallable(int inizio, int fine,int K, int DIM,
+    	public AssignPointsToClusters(int inizio, int fine,int K, int DIM,
     			List<List<Float>> points,List<List<Float>> centroids,List<Integer> membership) {
     		
-    		this.inizio=inizio;
-    		this.fine=fine;
+    		this.indexStart=inizio;
+    		this.indexEnd=fine;
     		this.K=K;
     		this.DIM=DIM;
     		
@@ -307,13 +252,13 @@ public class ParallelKMeans {
 		public ThreadReturns call() throws Exception {
 			
 			List<Float> dists = new ArrayList<Float>();
-	        ThreadReturns result= new ThreadReturns(K);
+	        ThreadReturns result= new ThreadReturns(K,DIM);
 	        
 	        for (int j=0;j<K;j++) {
 	        	dists.add(0.0f);
 	        }
 	    	
-	    	for (int i = inizio; i < fine; i++) {
+	    	for (int i = indexStart; i < indexEnd; i++) {
 				
 	    		List<Float> point = points.get(i);
 	    		
@@ -339,7 +284,7 @@ public class ParallelKMeans {
 	                }
 	            }
 	    		
-	            membership.set(i, minIndex);
+	            this.membership.set(i, minIndex);
 	    		
 	            for (int dim = 0; dim < DIM; dim++) {
 	            	result.getSums().get(minIndex).set(dim, result.getSums().get(minIndex).get(dim) + point.get(dim));
@@ -355,7 +300,19 @@ public class ParallelKMeans {
     }
     
     
-    
+    public static int getNumberOfDimensions(String csvFile,String csvSplitBy) {
+    	
+        try (BufferedReader br = new BufferedReader(new FileReader(csvFile))) {
+            String line;
+            line = br.readLine(); 
+            String[] ris = line.split(csvSplitBy);
+            return ris.length; // Initialization of the dimension of points.
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return 0;
+    }
     
     
     

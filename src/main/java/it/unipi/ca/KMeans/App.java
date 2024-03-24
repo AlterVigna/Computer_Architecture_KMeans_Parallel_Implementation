@@ -24,7 +24,7 @@ public class App
        
     	// Algorithm parameters
     	int K=5; 	// Number of clusters to discover
-    	int MAX_ITERATIONS=1; // Stopping condition
+    	int MAX_ITERATIONS=5; // Stopping condition
     	int DIM=0; // Dimension of the points in the dataset
     	int DATASET_SIZE=0; // Number of points in the dataset
     	
