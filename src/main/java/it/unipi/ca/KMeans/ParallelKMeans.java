@@ -4,6 +4,9 @@ import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.*;
+import java.io.File;
+import java.io.LineNumberReader;
+
 
 public class ParallelKMeans {
 
@@ -12,10 +15,10 @@ public class ParallelKMeans {
         
     	
     	// External file info
-        String csvFile = "clustering_dataset_10000000.csv";
+        String csvFile = "clustering_dataset.csv";
         String csvSplitBy = ",";
     	
-
+        int DATASET_SIZE=0;
         int NR_THREAD=10;	// Number of threads to use
         
         // Algorithm parameters
@@ -34,20 +37,14 @@ public class ParallelKMeans {
         // Membership of each point in the cluster
         List<Integer> membership = new ArrayList<Integer>();
 
-
-    	System.out.println("Loading the dataset...");
+        //evaluation of DATASET_SIZE
+        try(LineNumberReader lineNumberReader = new LineNumberReader(new FileReader(new File("clustering_dataset.csv")))) {
+                     lineNumberReader.skip(Long.MAX_VALUE);
+                     DATASET_SIZE = lineNumberReader.getLineNumber()-1;
+        }catch(Exception e){
+            System.err.println(e);
+        }
         
-        loadData(csvFile,csvSplitBy,DIM,points,membership);
-        
-        int DATASET_SIZE=points.size();
-
-        System.out.println("Dataset loaded");
-
-        initializeCentroids(K, points, centroids);
-       
-        System.out.println("Starting centroids: ");
-        printCentroids(centroids);
-       
         System.out.println("Start of the algorithm");
 
         long startTime = System.currentTimeMillis();
@@ -58,7 +55,42 @@ public class ParallelKMeans {
         // Split the dataset in parts as equal as possible
     	List<Integer> splits=new ArrayList<Integer>();
     	
-    	int currentDatasetIndex=0;
+        System.out.println("Loading the dataset...");
+        	
+        ExecutorService loaders = Executors.newFixedThreadPool(NR_THREAD);
+        	
+        currentDatasetIndex=0;
+
+        /* Sistemare il ritorno del sottoinsieme dei dati*/
+        Future<LoaderReturns> futurePoints= new ArrayList<Future<LoaderReturns>>();	
+        for (Iterator<Integer> iterator = splits.iterator(); iterator.hasNext();) {
+            final int startSplit=currentDatasetIndex;
+            Integer endSplit = (Integer) iterator.next();
+        		
+            Future<LoaderReturns> loads  = executor.submit(new loadPartialDataset(startSplit, endSplit, K, DIM, points, centroids, membership));
+        				
+            futurepoints.add(loads);
+            currentDatasetIndex=endSplit;
+        }
+
+        executor.shutdown();
+        try {
+            executor.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
+        } catch (InterruptedException e) {
+                e.printStackTrace();
+        }
+        //Dataset fully loaded 
+        points=futurePoints;
+        
+
+        System.out.println("Dataset loaded");
+
+        initializeCentroids(K, points, centroids);
+       
+        System.out.println("Starting centroids: ");
+        printCentroids(centroids);
+    	
+    	currentDatasetIndex=0;
     	while (currentDatasetIndex<DATASET_SIZE) {
     		currentDatasetIndex=((currentDatasetIndex+STEP<DATASET_SIZE))?(currentDatasetIndex+STEP):DATASET_SIZE;
     		splits.add(currentDatasetIndex);
@@ -100,26 +132,6 @@ public class ParallelKMeans {
     }
 
     
-    /**
-     * Method for loading the dataset into a proper data structure and initialization of default membership.
-     */
-    public static void loadData(String csvFile,String csvSplitBy,int N_DIM,List<List<Float>> points,List<Integer> membership) {
-        try (BufferedReader br = new BufferedReader(new FileReader(csvFile))) {
-            String line= br.readLine(); // Skip the first header line
-            while ((line = br.readLine()) != null) {
-                String[] data = line.split(csvSplitBy);
-                List<Float> point = new ArrayList<Float>();
-                for (int dim = 0; dim < N_DIM; dim++) {
-                    point.add(Float.parseFloat(data[dim]));
-                }
-                points.add(point);
-                membership.add(0);
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-
     
     public static void initializeCentroids(int K,List<List<Float>> points,List<List<Float>> centroids) {
         Random random = new Random(0);
@@ -204,7 +216,22 @@ public class ParallelKMeans {
 		}
     }
     
-    
+    /*
+        Utilily class to keep the result computed by loader Threads
+    */
+    public static class LoaderReturns{
+    	
+    	private List<List<Float>> points;
+        
+        public LoaderReturns () {
+        	this.points= new ArrayList<List<Float>>();       	
+             }
+        }
+
+	public List<List<Float>> getPointsSubset() {
+			return points;
+	}
+    }
     
     /**
      * Utility method to print the centroids coordinates.
@@ -220,6 +247,52 @@ public class ParallelKMeans {
     }
     
     
+    private static class loadPartialDataset implements Callable<LoaderReturns> {
+    	
+    	int firstRow;
+    	int finalRow;
+        int N_DIM;
+        String csvFile;
+        String csvSplitBy;
+        List<Integer> membership= new ArrayList<List<Float>>();
+       	List<List<Float>> points = new ArrayList<List<Float>>();
+    	
+    	
+    	public loadPartialDataset(int startingRow, int finalRow,List<List<Float>> points,String csvFile,String csvSplitBy,int N_DIM,List<Integer> membership) {
+    		
+    		this.firstRow=startingRow;
+    		this.finalRow=finalRow;
+    		this.points=points;
+                this.csvFile=csvFile;
+                this.csvSplitBy=csvSplitBy;
+                this.N_DIM=N_DIM;
+                this.membership=membership;
+        }
+    	
+    
+	@Override
+	public LoaderReturns call() throws Exception {
+            
+            try (BufferedReader br = new BufferedReader(new FileReader(csvFile))) {
+                Stream<String> lines = Files.lines(Paths.get(this.csvFile));
+                Iterator<String> line = lines.skip(this.firstRow-1).findFirst().get();
+                for (int row=this.firstRow;row<this.finalRow;i++) {
+                    String[] data = line.split(this.csvSplitBy);
+                    List<Float> point = new ArrayList<Float>();
+                    for (int dim = 0; dim < N_DIM; dim++) {
+                        point.add(Float.parseFloat(data[dim]));
+                    }
+                    points.add(point);
+                    membership.add(0);
+                    line.next();
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            return this.points;
+	}
+    	
+    }
     
     private static class AssignPointsToClusters implements Callable<ThreadReturns> {
     	
