@@ -13,6 +13,7 @@ import java.util.Random;
 import java.util.Set;
 
 /**
+ * Test 
  * Hello world!
  *
  */
@@ -23,12 +24,12 @@ public class App
        
     	// Algorithm parameters
     	int K=5; 	// Number of clusters to discover
-    	int MAX_ITERATIONS=100; // Stopping condition
+    	int MAX_ITERATIONS=1; // Stopping condition
     	int DIM=0; // Dimension of the points in the dataset
     	int DATASET_SIZE=0; // Number of points in the dataset
     	
     	// External file info
-    	String csvFile = "clustering_dataset.csv";
+    	String csvFile = "clustering_dataset_10000000.csv";
         String csvSplitBy = ",";
         
         
@@ -50,12 +51,15 @@ public class App
        
  
         System.out.println("Loading the dataset...");
+        long startLoading=System.currentTimeMillis();
+        
         
         String line="";
    	 	try (BufferedReader br = new BufferedReader(new FileReader(csvFile))) {
-   	 	String[] ris = line.split(br.readLine()); // Skip the first header line
+   	 	line = br.readLine(); 
+   	 	String[] ris = line.split(csvSplitBy); // Skip the first header line
    	 
-   	 	DIM=ris.length+1; // Initialization of the dimension of points.
+   	 	DIM=ris.length; // Initialization of the dimension of points.
             while ((line = br.readLine()) != null) {
                 
             	// Splitting the line by commas
@@ -76,6 +80,9 @@ public class App
             e.printStackTrace();
         }
    	 	
+   	 long endLoading=System.currentTimeMillis();
+   	 
+   	 System.out.println("Tempo totale Loading:"+(endLoading-startLoading));
    	 	
    	 // Initialization of the centroids	and related informations.
    	for (int j=0;j<K;j++) {
