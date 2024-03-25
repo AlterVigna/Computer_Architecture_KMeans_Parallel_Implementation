@@ -4,16 +4,10 @@ import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Random;
 import java.util.Set;
-import java.util.concurrent.Future;
-
-import it.unipi.ca.KMeans.ParallelKMeans.ThreadReturns;
 
 /**
  * Test Hello world!
@@ -21,9 +15,9 @@ import it.unipi.ca.KMeans.ParallelKMeans.ThreadReturns;
  */
 public class App {
 	public static void main(String[] args) {
-
+		
 		// External file info
-		String csvFile = "clustering_dataset.csv";
+		String csvFile = "clustering_dataset_10000000.csv";
 		String csvSplitBy = ",";
 
 		// Algorithm parameters
@@ -42,14 +36,20 @@ public class App {
 		// Membership of each point in the cluster
 		List<Integer> membership = new ArrayList<Integer>();
 
+		long startMain=System.currentTimeMillis();
+		
 		System.out.println("Loading the dataset...");
-
+		
+		long startLoadDataset=System.currentTimeMillis();
+		
 		loadData(csvFile, csvSplitBy, DIM, points, membership);
-
+		
+		long endLoadDataset=System.currentTimeMillis();
 		System.out.println("Dataset loaded");
 
+		long startVariableInit=System.currentTimeMillis();
 		initializeCentroids(K, points, centroids);
-
+		
 		System.out.println("Starting centroids: ");
 		printCentroids(centroids);
 
@@ -66,7 +66,10 @@ public class App {
 			sums.add(partialSum);
 			counts.add(0);
 		}
-
+		
+		long endVariableInit=System.currentTimeMillis();
+		
+		long startAlgorithmExecution=System.currentTimeMillis();
 		for (int nrIteration = 0; nrIteration < MAX_ITERATIONS; nrIteration++) {
 			
 			// For each point in the cluster, assign its nearest centroid and compute (sums and count) information of each cluster
@@ -74,14 +77,16 @@ public class App {
 
 			// Update new Centroids
 			updateCentroids(K, DIM, centroids, sums, counts);
-
 		}
+		long endAlgorithmExecution=System.currentTimeMillis();
 
 		System.out.println("Last centroids: ");
 		printCentroids(centroids);
 
-		long fine = System.currentTimeMillis();
-
+		long endMain = System.currentTimeMillis();
+		
+		
+		printTimeElapsed(endMain-startMain,endLoadDataset-startLoadDataset,endVariableInit-startVariableInit,endAlgorithmExecution-startAlgorithmExecution);
 	}
 
 	/**
@@ -206,6 +211,18 @@ public class App {
 			e.printStackTrace();
 		}
 		return 0;
+	}
+	
+	
+	public static void printTimeElapsed(long totalElapsedTime,long totalLoadingDatasetTime,
+			long totalInitCentroidTime,long totalAlgorithmExecutionTime) {
+	
+		System.out.println("\nTotal execution time: "+totalElapsedTime);
+		System.out.println("DETAILS:");
+		System.out.println("Loading dataset: "+totalLoadingDatasetTime);
+		System.out.println("Init. Variables time:"+totalInitCentroidTime);
+		System.out.println("Alg. execution time:"+totalAlgorithmExecutionTime);
+
 	}
 
 }

@@ -1,8 +1,12 @@
 package it.unipi.ca.KMeans;
 import java.util.concurrent.*;
+import java.util.stream.Stream;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
+import java.io.PrintStream;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.*;
 
 public class ParallelKMeans {
@@ -16,11 +20,11 @@ public class ParallelKMeans {
         String csvSplitBy = ",";
     	
 
-        int NR_THREAD=10;	// Number of threads to use
+        int NR_THREAD=7;	// Number of threads to use
         
         // Algorithm parameters
         int K = 5; // Number of clusters to discover
-        int MAX_ITERATIONS = 5; // Stopping condition
+        int MAX_ITERATIONS = 1; // Stopping condition
         
         int DIM = getNumberOfDimensions(csvFile, csvSplitBy);  // Dimension of the points in the dataset
         
@@ -34,14 +38,23 @@ public class ParallelKMeans {
         // Membership of each point in the cluster
         List<Integer> membership = new ArrayList<Integer>();
 
+        long startMain=System.currentTimeMillis();
+        
     	System.out.println("Loading the dataset...");
         
+    	long startLoadDataset=System.currentTimeMillis();
+    	
         loadData(csvFile,csvSplitBy,DIM,points,membership);
+        System.out.println(points.size());
+        long endLoadDataset=System.currentTimeMillis();
+		System.out.println("Dataset loaded");
         
         int DATASET_SIZE=points.size();
 
         System.out.println("Dataset loaded");
 
+        long startVariableInit=System.currentTimeMillis();
+        
         initializeCentroids(K, points, centroids);
        
         System.out.println("Starting centroids: ");
@@ -63,6 +76,9 @@ public class ParallelKMeans {
     		splits.add(currentDatasetIndex);
     	}
     	
+    	long endVariableInit=System.currentTimeMillis();
+    	
+    	long startAlgorithmExecution=System.currentTimeMillis();
         for (int iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
         	
         	ExecutorService executor = Executors.newFixedThreadPool(NR_THREAD);
@@ -89,21 +105,27 @@ public class ParallelKMeans {
         
           updateCentroids(K,DIM, returnList,centroids);
         }
-
-        long end = System.currentTimeMillis();
+        long endAlgorithmExecution=System.currentTimeMillis();
+        
 
         System.out.println("Last centroids: ");
         printCentroids(centroids);
 
-        System.out.println("Total Time: " + (end - startTime));
+        long endMain = System.currentTimeMillis();
+        
+		printTimeElapsed(endMain-startMain,endLoadDataset-startLoadDataset,endVariableInit-startVariableInit,endAlgorithmExecution-startAlgorithmExecution);
+        
+        
     }
 
     
     /**
      * Method for loading the dataset into a proper data structure and initialization of default membership.
+     * @throws ExecutionException 
+     * @throws InterruptedException 
      */
-    public static void loadData(String csvFile,String csvSplitBy,int N_DIM,List<List<Float>> points,List<Integer> membership) {
-        try (BufferedReader br = new BufferedReader(new FileReader(csvFile))) {
+    public static void loadData(String csvFile,String csvSplitBy,int N_DIM,List<List<Float>> points,List<Integer> membership) throws InterruptedException, ExecutionException {
+        /*try (BufferedReader br = new BufferedReader(new FileReader(csvFile))) {
             String line= br.readLine(); // Skip the first header line
             while ((line = br.readLine()) != null) {
                 String[] data = line.split(csvSplitBy);
@@ -116,7 +138,51 @@ public class ParallelKMeans {
             }
         } catch (IOException e) {
             e.printStackTrace();
+        }*/
+    	int DATASET_SIZE=10000000;
+    	int NR_THREAD=10;
+    	
+    	int STEP=DATASET_SIZE/NR_THREAD;
+    	List<Integer> splits=new ArrayList<Integer>();
+    	
+    	int currentDatasetIndex=1;
+    	while (currentDatasetIndex<DATASET_SIZE) {
+    		currentDatasetIndex=((currentDatasetIndex+STEP<DATASET_SIZE))?(currentDatasetIndex+STEP):DATASET_SIZE;
+    		splits.add(currentDatasetIndex);
+    	}
+    	
+    	
+    	ExecutorService loaders = Executors.newFixedThreadPool(10);
+    	
+        currentDatasetIndex=1;
+
+        /* Sistemare il ritorno del sottoinsieme dei dati*/
+        List<Future<List<List<Float>>>> futureData= new ArrayList<Future<List<List<Float>>>>();	
+        for (Iterator<Integer> iterator = splits.iterator(); iterator.hasNext();) {
+            final int startSplit=currentDatasetIndex;
+            Integer endSplit = (Integer) iterator.next();
+        		
+            Future<List<List<Float>>> loads  = loaders.submit(new loadPartialDataset(startSplit, endSplit, csvFile, csvSplitBy, 2));
+        				
+            futureData.add(loads);
+            currentDatasetIndex=endSplit;
         }
+
+        loaders.shutdown();
+        try {
+            loaders.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
+        } catch (InterruptedException e) {
+                e.printStackTrace();
+        }
+        //Dataset fully loaded 
+        for(int i=0;i<NR_THREAD;i++){
+        	
+        	Future<List<List<Float>>> a = futureData.get(i);
+            points.addAll(a.get());
+        }
+    	
+    	
+    	
     }
 
     
@@ -310,5 +376,75 @@ public class ParallelKMeans {
         }
         return 0;
     }
+    
+    public static void printTimeElapsed(long totalElapsedTime,long totalLoadingDatasetTime,
+			long totalInitCentroidTime,long totalAlgorithmExecutionTime) {
+	
+		System.out.println("\nTotal execution time: "+totalElapsedTime);
+		System.out.println("DETAILS:");
+		System.out.println("Loading dataset: "+totalLoadingDatasetTime);
+		System.out.println("Init. Variables time:"+totalInitCentroidTime);
+		System.out.println("Alg. execution time:"+totalAlgorithmExecutionTime);
+
+	}
+    
+    
+    private static class loadPartialDataset implements Callable<List<List<Float>>> {
+    	
+    	int firstRow;
+    	int finalRow;
+        int N_DIM;
+        String csvFile;
+        String csvSplitBy;
+        //List<Integer> membership= new ArrayList<List<Float>>();
+       	//List<List<Float>> points = new ArrayList<List<Float>>();
+    	
+    	
+    	public loadPartialDataset(int startingRow, int finalRow,String csvFile,String csvSplitBy,int N_DIM) {
+    		
+    		this.firstRow=startingRow;
+    		this.finalRow=finalRow;
+    		//this.points=points;
+                this.csvFile=csvFile;
+                this.csvSplitBy=csvSplitBy;
+                this.N_DIM=N_DIM;
+                //this.membership=membership;
+        }
+    	
+    
+	@Override
+	public List<List<Float>> call() throws Exception {
+            
+		List<List<Float>> points= new ArrayList<List<Float>>();
+		
+		try  {
+            Stream<String> lines = Files.lines(Paths.get(this.csvFile));
+            Iterator<String> lineIterator=lines.skip(this.firstRow).iterator();
+            for (int row=this.firstRow;row<this.finalRow;row++) {
+                String line=lineIterator.next();
+                String[] data = line.split(this.csvSplitBy);
+                List<Float> point = new ArrayList<Float>();
+                for (int dim = 0; dim < N_DIM; dim++) {
+                    point.add(Float.parseFloat(data[dim]));
+                }
+                points.add(point);
+            
+            }
+        } catch (Exception e) {
+        	PrintStream errorStream = System.err;
+        	errorStream.println("An arithmetic exception occurred: " + e.getMessage());
+            e.printStackTrace();
+        }
+		
+		
+		
+	
+       return points;
+	}
+    	
+    }
+    
+    
+    
     
 }
