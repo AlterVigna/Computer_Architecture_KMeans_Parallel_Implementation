@@ -11,6 +11,10 @@ import java.nio.file.Paths;
 import java.util.stream.Stream;
 
 
+/*Messaggio per Davide
+    Ho sistemato ulteriormente il codice rispetto a ieri sera, ultimo warning rimasto è il tipo di ritorno dei thread nella load
+*/
+
 public class ParallelKMeans {
 
 	
@@ -83,9 +87,10 @@ public class ParallelKMeans {
                 e.printStackTrace();
         }
         //Dataset fully loaded 
-        /*sistemare tipo di ritorno dei metodi per assegnazione
-        points=futurePoints;
-        */
+        for(int i=0;i<NR_THREAD;i++){
+            points.add(futureData.get(i).get().points);
+            membership.add(futureData.get(i).get().membership);
+        }
 
         System.out.println("Dataset loaded");
 
@@ -283,12 +288,12 @@ public class ParallelKMeans {
     
 	@Override
 	public LoaderReturns call() throws Exception {
-            /*sistemare iterator*/
             LoaderReturns result=new LoaderReturns();
             try (BufferedReader br = new BufferedReader(new FileReader(csvFile))) {
                 Stream<String> lines = Files.lines(Paths.get(this.csvFile));
-                String line = lines.skip(this.firstRow+1).findFirst().get();
-                for (int row=this.firstRow;row<this.finalRow;i++) {
+                Iterator<String> lineIterator=lines.skip(this.firstRow).iterator();
+                for (int row=this.firstRow;row<this.finalRow;row++) {
+                    String line=lineIterator.next();
                     String[] data = line.split(this.csvSplitBy);
                     List<Float> point = new ArrayList<Float>();
                     for (int dim = 0; dim < N_DIM; dim++) {
@@ -296,7 +301,6 @@ public class ParallelKMeans {
                     }
                 result.addPoint(point);
                 result.addMembership();
-                line.next();
                 }
             } catch (IOException e) {
                 e.printStackTrace();
