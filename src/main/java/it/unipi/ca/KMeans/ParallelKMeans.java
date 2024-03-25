@@ -6,6 +6,9 @@ import java.io.IOException;
 import java.util.*;
 import java.io.File;
 import java.io.LineNumberReader;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.stream.Stream;
 
 
 public class ParallelKMeans {
@@ -37,17 +40,17 @@ public class ParallelKMeans {
         // Membership of each point in the cluster
         List<Integer> membership = new ArrayList<Integer>();
 
-        //evaluation of DATASET_SIZE
-        try(LineNumberReader lineNumberReader = new LineNumberReader(new FileReader(new File("clustering_dataset.csv")))) {
-                     lineNumberReader.skip(Long.MAX_VALUE);
-                     DATASET_SIZE = lineNumberReader.getLineNumber()-1;
-        }catch(Exception e){
-            System.err.println(e);
-        }
-        
         System.out.println("Start of the algorithm");
 
         long startTime = System.currentTimeMillis();
+
+        //evaluation of DATASET_SIZE
+        try(LineNumberReader lineNumberReader = new LineNumberReader(new FileReader(new File("clustering_dataset.csv")))) {
+            lineNumberReader.skip(Long.MAX_VALUE);
+            DATASET_SIZE = lineNumberReader.getLineNumber()-1;
+        }catch(Exception e){
+            System.err.println(e);
+        }
         
         
     	int STEP=DATASET_SIZE/NR_THREAD;
@@ -59,29 +62,30 @@ public class ParallelKMeans {
         	
         ExecutorService loaders = Executors.newFixedThreadPool(NR_THREAD);
         	
-        currentDatasetIndex=0;
+        int currentDatasetIndex=0;
 
         /* Sistemare il ritorno del sottoinsieme dei dati*/
-        Future<LoaderReturns> futurePoints= new ArrayList<Future<LoaderReturns>>();	
+        List<Future<LoaderReturns>> futureData= new ArrayList<Future<LoaderReturns>>();	
         for (Iterator<Integer> iterator = splits.iterator(); iterator.hasNext();) {
             final int startSplit=currentDatasetIndex;
             Integer endSplit = (Integer) iterator.next();
         		
-            Future<LoaderReturns> loads  = executor.submit(new loadPartialDataset(startSplit, endSplit, K, DIM, points, centroids, membership));
+            Future<LoaderReturns> loads  = loaders.submit(new loadPartialDataset(startSplit, endSplit,csvFile, csvSplitBy, DIM));
         				
-            futurepoints.add(loads);
+            futureData.add(loads);
             currentDatasetIndex=endSplit;
         }
 
-        executor.shutdown();
+        loaders.shutdown();
         try {
-            executor.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
+            loaders.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
         } catch (InterruptedException e) {
                 e.printStackTrace();
         }
         //Dataset fully loaded 
+        /*sistemare tipo di ritorno dei metodi per assegnazione
         points=futurePoints;
-        
+        */
 
         System.out.println("Dataset loaded");
 
@@ -222,14 +226,25 @@ public class ParallelKMeans {
     public static class LoaderReturns{
     	
     	private List<List<Float>> points;
+        private List<Integer> membership;
         
         public LoaderReturns () {
-        	this.points= new ArrayList<List<Float>>();       	
-             }
+        	this.points= new ArrayList<List<Float>>();
+                this.membership=new ArrayList<Integer>();
         }
+        
 
 	public List<List<Float>> getPointsSubset() {
-			return points;
+		return this.points;
+	}
+        public void addPoint(List<Float> point){
+                this.points.add(point);
+        }
+        public List<Integer> getMembership() {
+		return this.membership;
+	}
+        public void addMembership () {
+		this.membership.add(0);
 	}
     }
     
@@ -254,42 +269,39 @@ public class ParallelKMeans {
         int N_DIM;
         String csvFile;
         String csvSplitBy;
-        List<Integer> membership= new ArrayList<List<Float>>();
-       	List<List<Float>> points = new ArrayList<List<Float>>();
     	
     	
-    	public loadPartialDataset(int startingRow, int finalRow,List<List<Float>> points,String csvFile,String csvSplitBy,int N_DIM,List<Integer> membership) {
+    	public loadPartialDataset(int startingRow, int finalRow,String csvFile,String csvSplitBy,int N_DIM) {
     		
     		this.firstRow=startingRow;
     		this.finalRow=finalRow;
-    		this.points=points;
                 this.csvFile=csvFile;
                 this.csvSplitBy=csvSplitBy;
                 this.N_DIM=N_DIM;
-                this.membership=membership;
         }
     	
     
 	@Override
 	public LoaderReturns call() throws Exception {
-            
+            /*sistemare iterator*/
+            LoaderReturns result=new LoaderReturns();
             try (BufferedReader br = new BufferedReader(new FileReader(csvFile))) {
                 Stream<String> lines = Files.lines(Paths.get(this.csvFile));
-                Iterator<String> line = lines.skip(this.firstRow-1).findFirst().get();
+                String line = lines.skip(this.firstRow+1).findFirst().get();
                 for (int row=this.firstRow;row<this.finalRow;i++) {
                     String[] data = line.split(this.csvSplitBy);
                     List<Float> point = new ArrayList<Float>();
                     for (int dim = 0; dim < N_DIM; dim++) {
                         point.add(Float.parseFloat(data[dim]));
                     }
-                    points.add(point);
-                    membership.add(0);
-                    line.next();
+                result.addPoint(point);
+                result.addMembership();
+                line.next();
                 }
             } catch (IOException e) {
                 e.printStackTrace();
             }
-            return this.points;
+            return result;
 	}
     	
     }
